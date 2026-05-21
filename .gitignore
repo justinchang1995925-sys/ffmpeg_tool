@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.ffmpeg_tool_config.json
+uploads/*
+outputs/*
+!uploads/.gitkeep
+!outputs/.gitkeep

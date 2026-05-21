@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FFmpeg 音视频图片处理工具</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Python Web + FFmpeg</p>
+      <h1>音视频图片处理工具</h1>
+      <p>支持一键下载 FFmpeg、配置用户环境变量、按功能填写参数并执行转换。</p>
+    </div>
+    <div class="status-card">
+      <span class="status {{ 'ok' if binaries.installed else 'bad' }}"></span>
+      <strong>{{ 'FFmpeg 已就绪' if binaries.installed else 'FFmpeg 未安装' }}</strong>
+      <small>{{ binaries.ffmpeg or '请先安装或配置 PATH' }}</small>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel sidebar">
+      <h2>功能列表</h2>
+      {% for category, items in groups.items() %}
+        <section class="feature-group">
+          <h3>{{ category }}</h3>
+          {% for feature in items %}
+            <a class="feature-link {{ 'active' if feature.id == selected_feature.id else '' }}"
+               href="{{ url_for('index', feature=feature.id) }}">
+              {{ feature.title }}
+            </a>
+          {% endfor %}
+        </section>
+      {% endfor %}
+    </aside>
+
+    <section class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="messages">
+            {% for category, message in messages %}
+              <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="panel">
+        <h2>一键下载与安装 FFmpeg</h2>
+        <p class="muted">
+          Windows 可执行文件来自 ffmpeg.org 下载页推荐的 gyan.dev release essentials ZIP。
+          安装后会保存 FFmpeg bin 路径，并写入当前用户 PATH。
+        </p>
+        <form action="{{ url_for('install') }}" method="post" class="grid-form">
+          <label>
+            安装路径
+            <input name="install_dir" value="D:\tools\ffmpeg" placeholder="D:\tools\ffmpeg">
+          </label>
+          <label>
+            下载地址
+            <input name="download_url" value="{{ default_download_url }}">
+          </label>
+          <button type="submit">下载并安装</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">{{ selected_feature.category }}</p>
+            <h2>{{ selected_feature.title }}</h2>
+          </div>
+          <span class="pill">{{ selected_feature.tool }}</span>
+        </div>
+
+        <p>{{ selected_feature.description }}</p>
+
+        <div class="docs">
+          <h3>命令示例</h3>
+          <code>{{ selected_feature.example }}</code>
+          <h3>参数说明</h3>
+          <ul>
+            {% for item in selected_feature.docs %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <form action="{{ url_for('run_feature') }}" method="post" enctype="multipart/form-data" class="run-form">
+          <input type="hidden" name="feature_id" value="{{ selected_feature.id }}">
+          <label>
+            输入文件
+            <input type="file" name="input_file" required>
+          </label>
+
+          <div class="params-grid">
+            {% for param in selected_feature.params %}
+              <label>
+                {{ param.label }}
+                {% if param.choices %}
+                  <select name="{{ param.name }}">
+                    {% for choice in param.choices %}
+                      <option value="{{ choice }}" {{ 'selected' if choice == param.default else '' }}>{{ choice }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input name="{{ param.name }}" value="{{ param.default }}" placeholder="{{ param.placeholder or '' }}">
+                {% endif %}
+                {% if param.help %}
+                  <small>{{ param.help }}</small>
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+
+          <label>
+            高级自定义参数（可选，追加到 -i 输入文件之后、输出文件之前）
+            <input name="custom_args" placeholder="-vf scale=640:-1 -c:v libx264">
+          </label>
+
+          <button type="submit" {{ '' if binaries.installed else 'disabled' }}>执行处理</button>
+        </form>
+      </section>
+
+      {% if result %}
+        <section class="panel result {{ 'success' if result.success else 'failed' }}">
+          <h2>{{ '处理完成' if result.success else '处理失败' }}</h2>
+          <h3>执行命令</h3>
+          <pre>{{ result.command }}</pre>
+          {% if result.output_file %}
+            <a class="download" href="{{ url_for('download', filename=result.output_file) }}">下载结果文件</a>
+          {% endif %}
+          <h3>标准输出</h3>
+          <pre>{{ result.stdout or '无' }}</pre>
+          <h3>错误输出</h3>
+          <pre>{{ result.stderr or '无' }}</pre>
+        </section>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

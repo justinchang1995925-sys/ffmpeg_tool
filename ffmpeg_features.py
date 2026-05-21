@@ -1,0 +1,321 @@
+"""Data-driven FFmpeg feature catalog used by the web UI and command builder."""
+
+FEATURES = [
+    {
+        "id": "audio_params_convert",
+        "category": "音频处理",
+        "title": "音视频参数转换",
+        "description": "调整音频声道数、采样率和音频码率，适合语音识别、转码和压缩场景。",
+        "tool": "ffmpeg",
+        "output_ext": "wav",
+        "example": "ffmpeg -y -i sound1.wav -ac 1 -ar 16000 -b:a 512k sound2.wav",
+        "docs": [
+            "-ac：audio channel，声道数，1 表示 mono，2 表示 stereo。",
+            "-ar：audio sample rate，采样率，例如 16000 表示 16 kHz。",
+            "-b:a：audio bitrate，音频码率，例如 512k。",
+            "-y：覆盖输出文件。",
+            "-i：输入文件，后接输入文件名。",
+        ],
+        "args": ["-ac", "{audio_channels}", "-ar", "{sample_rate}", "-b:a", "{audio_bitrate}"],
+        "params": [
+            {
+                "name": "audio_channels",
+                "label": "声道数 -ac",
+                "default": "1",
+                "placeholder": "1 或 2",
+                "help": "1=mono，2=stereo。",
+            },
+            {
+                "name": "sample_rate",
+                "label": "采样率 -ar",
+                "default": "16000",
+                "placeholder": "16000",
+                "help": "单位 Hz，常见值：16000、44100、48000。",
+            },
+            {
+                "name": "audio_bitrate",
+                "label": "音频码率 -b:a",
+                "default": "512k",
+                "placeholder": "512k",
+                "help": "单位 bit/s，可写 128k、256k、512k。",
+            },
+        ],
+    },
+    {
+        "id": "extract_audio",
+        "category": "音频处理",
+        "title": "从视频提取音频",
+        "description": "去掉视频流，只保留音频并编码为 MP3、AAC 或 WAV。",
+        "tool": "ffmpeg",
+        "output_ext": "{format}",
+        "example": "ffmpeg -y -i input.mp4 -vn -c:a libmp3lame -b:a 192k output.mp3",
+        "docs": ["-vn：不输出视频流。", "-c:a：音频编码器。", "-b:a：音频码率。"],
+        "args": ["-vn", "-c:a", "{audio_codec}", "-b:a", "{audio_bitrate}"],
+        "params": [
+            {
+                "name": "format",
+                "label": "输出格式",
+                "default": "mp3",
+                "choices": ["mp3", "aac", "wav", "m4a"],
+                "help": "决定输出文件扩展名。",
+            },
+            {
+                "name": "audio_codec",
+                "label": "音频编码器 -c:a",
+                "default": "libmp3lame",
+                "choices": ["libmp3lame", "aac", "pcm_s16le", "copy"],
+                "help": "WAV 通常使用 pcm_s16le，直接复制可选 copy。",
+            },
+            {
+                "name": "audio_bitrate",
+                "label": "音频码率 -b:a",
+                "default": "192k",
+                "placeholder": "192k",
+                "help": "当 audio_codec 为 copy 时该参数可能被 FFmpeg 忽略。",
+            },
+        ],
+    },
+    {
+        "id": "audio_volume",
+        "category": "音频处理",
+        "title": "调整音量",
+        "description": "通过 audio filter 放大或降低音量。",
+        "tool": "ffmpeg",
+        "output_ext": "mp3",
+        "example": "ffmpeg -y -i input.mp3 -filter:a volume=1.5 output.mp3",
+        "docs": ["-filter:a：音频滤镜。", "volume=1.5 表示音量变为 1.5 倍。"],
+        "args": ["-filter:a", "volume={volume}"],
+        "params": [
+            {
+                "name": "volume",
+                "label": "音量倍数",
+                "default": "1.5",
+                "placeholder": "1.5",
+                "help": "1.0 为原音量，0.5 为一半，2.0 为两倍。",
+            }
+        ],
+    },
+    {
+        "id": "trim_media",
+        "category": "音视频剪辑",
+        "title": "截取片段",
+        "description": "按开始时间和持续时长截取音频或视频片段。",
+        "tool": "ffmpeg",
+        "output_ext": "mp4",
+        "example": "ffmpeg -y -ss 00:00:05 -i input.mp4 -t 10 -c copy output.mp4",
+        "docs": ["-ss：开始时间。", "-t：持续时长。", "-c copy：不重新编码，速度快。"],
+        "pre_input_args": ["-ss", "{start_time}"],
+        "args": ["-t", "{duration}", "-c", "{codec_mode}"],
+        "params": [
+            {
+                "name": "start_time",
+                "label": "开始时间 -ss",
+                "default": "00:00:00",
+                "placeholder": "00:00:05",
+                "help": "格式可为 HH:MM:SS 或秒数。",
+            },
+            {
+                "name": "duration",
+                "label": "持续时长 -t",
+                "default": "10",
+                "placeholder": "10",
+                "help": "可填写秒数或 HH:MM:SS。",
+            },
+            {
+                "name": "codec_mode",
+                "label": "编码模式 -c",
+                "default": "copy",
+                "choices": ["copy", "libx264", "aac"],
+                "help": "copy 最快，但部分格式可能需要重新编码。",
+            },
+        ],
+    },
+    {
+        "id": "video_transcode",
+        "category": "视频处理",
+        "title": "视频转码",
+        "description": "转换视频编码、质量、编码速度和音频编码。",
+        "tool": "ffmpeg",
+        "output_ext": "mp4",
+        "example": "ffmpeg -y -i input.mov -c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k output.mp4",
+        "docs": ["-c:v：视频编码器。", "-preset：编码速度。", "-crf：恒定质量，数值越小质量越高。"],
+        "args": [
+            "-c:v",
+            "{video_codec}",
+            "-preset",
+            "{preset}",
+            "-crf",
+            "{crf}",
+            "-c:a",
+            "{audio_codec}",
+            "-b:a",
+            "{audio_bitrate}",
+        ],
+        "params": [
+            {
+                "name": "video_codec",
+                "label": "视频编码器 -c:v",
+                "default": "libx264",
+                "choices": ["libx264", "libx265", "mpeg4", "copy"],
+            },
+            {
+                "name": "preset",
+                "label": "编码速度 -preset",
+                "default": "medium",
+                "choices": ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"],
+            },
+            {"name": "crf", "label": "质量 CRF", "default": "23", "placeholder": "23", "help": "18-28 常用。"},
+            {
+                "name": "audio_codec",
+                "label": "音频编码器 -c:a",
+                "default": "aac",
+                "choices": ["aac", "libmp3lame", "copy"],
+            },
+            {"name": "audio_bitrate", "label": "音频码率 -b:a", "default": "128k", "placeholder": "128k"},
+        ],
+    },
+    {
+        "id": "video_resize",
+        "category": "视频处理",
+        "title": "视频缩放",
+        "description": "调整视频分辨率，可固定宽高或使用 -1 保持比例。",
+        "tool": "ffmpeg",
+        "output_ext": "mp4",
+        "example": "ffmpeg -y -i input.mp4 -vf scale=1280:-1 output.mp4",
+        "docs": ["-vf：视频滤镜。", "scale=1280:-1 表示宽 1280，高度按比例自动计算。"],
+        "args": ["-vf", "scale={width}:{height}"],
+        "params": [
+            {"name": "width", "label": "宽度", "default": "1280", "placeholder": "1280"},
+            {"name": "height", "label": "高度", "default": "-1", "placeholder": "-1"},
+        ],
+    },
+    {
+        "id": "video_fps",
+        "category": "视频处理",
+        "title": "调整帧率",
+        "description": "设置输出视频帧率。",
+        "tool": "ffmpeg",
+        "output_ext": "mp4",
+        "example": "ffmpeg -y -i input.mp4 -r 30 output.mp4",
+        "docs": ["-r：输出帧率。"],
+        "args": ["-r", "{fps}"],
+        "params": [{"name": "fps", "label": "帧率 -r", "default": "30", "placeholder": "30"}],
+    },
+    {
+        "id": "video_rotate",
+        "category": "视频处理",
+        "title": "视频旋转",
+        "description": "使用 transpose 滤镜旋转视频画面。",
+        "tool": "ffmpeg",
+        "output_ext": "mp4",
+        "example": "ffmpeg -y -i input.mp4 -vf transpose=1 output.mp4",
+        "docs": ["transpose=1：顺时针 90 度。", "transpose=2：逆时针 90 度。"],
+        "args": ["-vf", "transpose={transpose}"],
+        "params": [
+            {
+                "name": "transpose",
+                "label": "旋转模式",
+                "default": "1",
+                "choices": ["0", "1", "2", "3"],
+                "help": "0/3 为不同方向翻转后旋转，1=顺时针 90 度，2=逆时针 90 度。",
+            }
+        ],
+    },
+    {
+        "id": "extract_frame",
+        "category": "图片处理",
+        "title": "截取视频画面",
+        "description": "从视频指定时间点导出一张图片。",
+        "tool": "ffmpeg",
+        "output_ext": "jpg",
+        "example": "ffmpeg -y -ss 00:00:03 -i input.mp4 -frames:v 1 output.jpg",
+        "docs": ["-frames:v 1：只输出一帧视频画面。"],
+        "pre_input_args": ["-ss", "{time_point}"],
+        "args": ["-frames:v", "1"],
+        "params": [
+            {
+                "name": "time_point",
+                "label": "截图时间 -ss",
+                "default": "00:00:03",
+                "placeholder": "00:00:03",
+            }
+        ],
+    },
+    {
+        "id": "image_resize",
+        "category": "图片处理",
+        "title": "图片缩放",
+        "description": "使用 FFmpeg 对图片进行缩放。",
+        "tool": "ffmpeg",
+        "output_ext": "png",
+        "example": "ffmpeg -y -i input.jpg -vf scale=800:-1 output.png",
+        "docs": ["图片同样可以使用 -vf scale 滤镜。"],
+        "args": ["-vf", "scale={width}:{height}"],
+        "params": [
+            {"name": "width", "label": "宽度", "default": "800", "placeholder": "800"},
+            {"name": "height", "label": "高度", "default": "-1", "placeholder": "-1"},
+        ],
+    },
+    {
+        "id": "gif_create",
+        "category": "图片处理",
+        "title": "视频转 GIF",
+        "description": "从视频生成 GIF 动图。",
+        "tool": "ffmpeg",
+        "output_ext": "gif",
+        "example": "ffmpeg -y -i input.mp4 -vf fps=12,scale=480:-1 output.gif",
+        "docs": ["fps：GIF 帧率。", "scale：GIF 尺寸。"],
+        "args": ["-vf", "fps={fps},scale={width}:{height}"],
+        "params": [
+            {"name": "fps", "label": "GIF 帧率", "default": "12", "placeholder": "12"},
+            {"name": "width", "label": "宽度", "default": "480", "placeholder": "480"},
+            {"name": "height", "label": "高度", "default": "-1", "placeholder": "-1"},
+        ],
+    },
+    {
+        "id": "media_probe",
+        "category": "媒体信息",
+        "title": "查看媒体信息",
+        "description": "调用 ffprobe 输出格式、码率、时长、视频流和音频流信息。",
+        "tool": "ffprobe",
+        "output_ext": "json",
+        "example": "ffprobe -hide_banner -show_format -show_streams -print_format json input.mp4",
+        "docs": ["ffprobe 用于分析媒体文件元数据，不改变原文件。"],
+        "args": ["-hide_banner", "-show_format", "-show_streams", "-print_format", "json"],
+        "params": [],
+    },
+    {
+        "id": "custom_ffmpeg",
+        "category": "高级",
+        "title": "自定义 FFmpeg 参数",
+        "description": "上传输入文件后，自定义 -i 之后、输出文件之前的参数。",
+        "tool": "ffmpeg",
+        "output_ext": "{format}",
+        "example": "ffmpeg -y -i input.mp4 <自定义参数> output.mp4",
+        "docs": ["适合未在功能目录中列出的参数组合。不要在这里填写输入文件和输出文件。"],
+        "args": [],
+        "params": [
+            {
+                "name": "format",
+                "label": "输出格式",
+                "default": "mp4",
+                "placeholder": "mp4",
+                "help": "例如 mp4、wav、jpg、gif。",
+            }
+        ],
+        "allow_custom_args": True,
+    },
+]
+
+
+def get_feature(feature_id):
+    """Return a single feature definition by id."""
+    return next((feature for feature in FEATURES if feature["id"] == feature_id), None)
+
+
+def grouped_features():
+    """Return features grouped by category while preserving declaration order."""
+    groups = {}
+    for feature in FEATURES:
+        groups.setdefault(feature["category"], []).append(feature)
+    return groups
