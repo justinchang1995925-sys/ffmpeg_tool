@@ -1,6 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
+build/
+dist/
+*.spec
 .ffmpeg_tool_config.json
 uploads/*
 outputs/*

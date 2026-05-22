@@ -53,7 +53,7 @@
           Windows 可执行文件来自 ffmpeg.org 下载页推荐的 gyan.dev release essentials ZIP。
           安装后会保存 FFmpeg bin 路径，并写入当前用户 PATH。
         </p>
-        <form action="{{ url_for('install') }}" method="post" class="grid-form">
+        <form id="install-form" action="{{ url_for('install') }}" method="post" class="grid-form">
           <label>
             安装路径
             <input name="install_dir" value="D:\tools\ffmpeg" placeholder="D:\tools\ffmpeg">
@@ -62,8 +62,18 @@
             下载地址
             <input name="download_url" value="{{ default_download_url }}">
           </label>
-          <button type="submit">下载并安装</button>
+          <button id="install-button" type="submit">下载并安装</button>
         </form>
+        <div id="install-progress" class="install-progress" hidden>
+          <div class="progress-heading">
+            <strong id="install-progress-title">准备安装...</strong>
+            <span id="install-progress-percent">0%</span>
+          </div>
+          <div class="progress-bar" aria-label="FFmpeg 安装进度">
+            <div id="install-progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <p id="install-progress-message" class="muted">等待下载开始...</p>
+        </div>
       </section>
 
       <section class="panel">
@@ -140,5 +150,66 @@
       {% endif %}
     </section>
   </main>
+  <script>
+    const installForm = document.getElementById("install-form");
+    const installButton = document.getElementById("install-button");
+    const progressBox = document.getElementById("install-progress");
+    const progressTitle = document.getElementById("install-progress-title");
+    const progressPercent = document.getElementById("install-progress-percent");
+    const progressFill = document.getElementById("install-progress-fill");
+    const progressMessage = document.getElementById("install-progress-message");
+    let progressTimer = null;
+
+    function renderInstallProgress(data) {
+      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
+      progressBox.hidden = false;
+      progressFill.style.width = `${percent}%`;
+      progressPercent.textContent = `${percent}%`;
+      progressMessage.textContent = data.message || "";
+
+      if (data.status === "success") {
+        progressTitle.textContent = "安装完成";
+        progressBox.className = "install-progress success";
+        installButton.disabled = false;
+        window.clearInterval(progressTimer);
+        progressTimer = null;
+        window.setTimeout(() => window.location.reload(), 1500);
+      } else if (data.status === "error") {
+        progressTitle.textContent = "安装失败";
+        progressBox.className = "install-progress error";
+        installButton.disabled = false;
+        window.clearInterval(progressTimer);
+        progressTimer = null;
+      } else {
+        progressTitle.textContent = "正在安装 FFmpeg";
+        progressBox.className = "install-progress";
+        installButton.disabled = true;
+      }
+    }
+
+    async function pollInstallProgress() {
+      const response = await fetch("{{ url_for('install_status') }}", { cache: "no-store" });
+      renderInstallProgress(await response.json());
+    }
+
+    installForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      installButton.disabled = true;
+      renderInstallProgress({ percent: 0, message: "正在启动安装任务...", status: "running" });
+
+      const response = await fetch(installForm.action, {
+        method: "POST",
+        body: new FormData(installForm),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ message: "安装任务启动失败。" }));
+        renderInstallProgress({ percent: 0, message: data.message, status: "error" });
+        return;
+      }
+
+      progressTimer = window.setInterval(pollInstallProgress, 1000);
+      pollInstallProgress();
+    });
+  </script>
 </body>
 </html>

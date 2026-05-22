@@ -188,6 +188,58 @@ button:disabled {
   background: #94a3b8;
 }
 
+.install-progress {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.install-progress.success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.install-progress.error {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.progress-bar {
+  height: 14px;
+  margin: 12px 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  transition: width 0.25s ease;
+}
+
+.install-progress.success .progress-fill {
+  background: linear-gradient(90deg, #16a34a, #86efac);
+}
+
+.install-progress.error .progress-fill {
+  background: linear-gradient(90deg, #dc2626, #fca5a5);
+}
+
+.install-progress p {
+  margin: 0;
+}
+
 .section-title {
   display: flex;
   align-items: center;

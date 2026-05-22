@@ -6,13 +6,22 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
 
 DEFAULT_WINDOWS_BUILD_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-CONFIG_FILE = Path(".ffmpeg_tool_config.json")
+
+
+def _data_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+CONFIG_FILE = _data_dir() / ".ffmpeg_tool_config.json"
 
 
 def _load_config() -> dict:
@@ -75,7 +84,7 @@ def discover_binaries() -> dict:
     }
 
 
-def _download_file(url: str, target: Path) -> None:
+def _download_file(url: str, target: Path, progress_callback=None) -> None:
     with urllib.request.urlopen(url, timeout=60) as response:
         total = int(response.headers.get("Content-Length", "0") or 0)
         downloaded = 0
@@ -86,6 +95,14 @@ def _download_file(url: str, target: Path) -> None:
                     break
                 output.write(chunk)
                 downloaded += len(chunk)
+                if progress_callback:
+                    if total:
+                        percent = 5 + int(downloaded / total * 80)
+                        message = f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB"
+                    else:
+                        percent = 20
+                        message = f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} MB"
+                    progress_callback(percent, message)
                 if total and downloaded > total:
                     raise RuntimeError("Downloaded more data than expected.")
 
@@ -124,20 +141,32 @@ def _append_user_path(bin_dir: Path) -> str:
     return "已写入用户 PATH；新打开的终端会自动生效。"
 
 
-def install_ffmpeg(install_dir: str, download_url: str = DEFAULT_WINDOWS_BUILD_URL) -> dict:
+def install_ffmpeg(install_dir: str, download_url: str = DEFAULT_WINDOWS_BUILD_URL, progress_callback=None) -> dict:
     """Download, extract, configure PATH, and persist FFmpeg location."""
+    if progress_callback:
+        progress_callback(2, "正在准备安装目录...")
     target_root = Path(install_dir).expanduser().resolve()
     target_root.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         zip_path = Path(temp_dir) / "ffmpeg.zip"
-        _download_file(download_url, zip_path)
+        if progress_callback:
+            progress_callback(5, "正在连接下载服务器...")
+        _download_file(download_url, zip_path, progress_callback)
+        if progress_callback:
+            progress_callback(88, "下载完成，正在解压安装包...")
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(target_root)
 
+    if progress_callback:
+        progress_callback(94, "正在查找 FFmpeg 可执行文件...")
     bin_dir = _find_bin_dir(target_root)
+    if progress_callback:
+        progress_callback(97, "正在配置用户 PATH 环境变量...")
     path_message = _append_user_path(bin_dir)
     _save_config({"ffmpeg_bin_dir": str(bin_dir), "download_url": download_url})
+    if progress_callback:
+        progress_callback(100, "FFmpeg 安装完成。")
 
     return {
         "bin_dir": str(bin_dir),
