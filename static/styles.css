@@ -306,6 +306,87 @@ pre {
   border-color: #fca5a5;
 }
 
+.alert-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 16px 18px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fef2f2;
+}
+
+.alert-link {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.search-input {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.toolbar-panel {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-button {
+  color: var(--primary);
+  background: #eff6ff;
+}
+
+.secondary-button:disabled {
+  color: #94a3b8;
+  background: #e2e8f0;
+}
+
+.command-preview {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  color: var(--primary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.log-block.collapsed {
+  max-height: 220px;
+  overflow: auto;
+}
+
 @media (max-width: 900px) {
   .hero,
   .layout {

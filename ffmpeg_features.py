@@ -401,3 +401,113 @@ def grouped_features():
     for feature in FEATURES:
         groups.setdefault(feature["category"], []).append(feature)
     return groups
+
+
+# Recommended codec combinations per container (used for validation and UI presets).
+FORMAT_PRESETS = {
+    "mp4": {
+        "stream_mode": "audio_video",
+        "video_codecs": ["libx264", "libx265", "mpeg4", "copy"],
+        "audio_codecs": ["aac", "libmp3lame", "copy"],
+        "default_video": "libx264",
+        "default_audio": "aac",
+        "force_format": "",
+    },
+    "mkv": {
+        "stream_mode": "audio_video",
+        "video_codecs": ["libx264", "libx265", "libvpx-vp9", "mpeg4", "copy"],
+        "audio_codecs": ["aac", "libopus", "flac", "libmp3lame", "copy"],
+        "default_video": "libx264",
+        "default_audio": "aac",
+        "force_format": "matroska",
+    },
+    "webm": {
+        "stream_mode": "audio_video",
+        "video_codecs": ["libvpx-vp9", "copy"],
+        "audio_codecs": ["libopus", "copy"],
+        "default_video": "libvpx-vp9",
+        "default_audio": "libopus",
+        "force_format": "webm",
+    },
+    "mov": {
+        "stream_mode": "audio_video",
+        "video_codecs": ["libx264", "libx265", "mpeg4", "copy"],
+        "audio_codecs": ["aac", "libmp3lame", "copy"],
+        "default_video": "libx264",
+        "default_audio": "aac",
+        "force_format": "",
+    },
+    "avi": {
+        "stream_mode": "audio_video",
+        "video_codecs": ["mpeg4", "libx264", "copy"],
+        "audio_codecs": ["libmp3lame", "aac", "copy"],
+        "default_video": "mpeg4",
+        "default_audio": "libmp3lame",
+        "force_format": "",
+    },
+    "mp3": {
+        "stream_mode": "audio_only",
+        "video_codecs": [],
+        "audio_codecs": ["libmp3lame", "copy"],
+        "default_video": "",
+        "default_audio": "libmp3lame",
+        "force_format": "",
+    },
+    "wav": {
+        "stream_mode": "audio_only",
+        "video_codecs": [],
+        "audio_codecs": ["pcm_s16le", "copy"],
+        "default_video": "",
+        "default_audio": "pcm_s16le",
+        "force_format": "",
+    },
+    "flac": {
+        "stream_mode": "audio_only",
+        "video_codecs": [],
+        "audio_codecs": ["flac", "copy"],
+        "default_video": "",
+        "default_audio": "flac",
+        "force_format": "",
+    },
+    "ogg": {
+        "stream_mode": "audio_only",
+        "video_codecs": [],
+        "audio_codecs": ["libopus", "copy"],
+        "default_video": "",
+        "default_audio": "libopus",
+        "force_format": "",
+    },
+    "m4a": {
+        "stream_mode": "audio_only",
+        "video_codecs": [],
+        "audio_codecs": ["aac", "copy"],
+        "default_video": "",
+        "default_audio": "aac",
+        "force_format": "",
+    },
+}
+
+
+def validate_container_codec(values: dict) -> str | None:
+    """Return an error message when the format/codec combination is invalid."""
+    container = values.get("container_format", "mp4").lower().strip().lstrip(".")
+    preset = FORMAT_PRESETS.get(container)
+    if not preset:
+        return f"不支持的封装格式：{container}"
+
+    stream_mode = values.get("stream_mode", preset["stream_mode"])
+    if preset["stream_mode"] == "audio_only" and stream_mode != "audio_only":
+        return f"{container} 为纯音频封装，请将输出流类型设为“仅音频”。"
+
+    video_codec = values.get("video_codec", "")
+    audio_codec = values.get("audio_codec", "")
+
+    if stream_mode != "audio_only" and video_codec and video_codec not in preset["video_codecs"]:
+        allowed = "、".join(preset["video_codecs"]) or "无"
+        return f"{container} 不支持视频编码器 {video_codec}，可选：{allowed}。"
+
+    if stream_mode != "video_only" and audio_codec and audio_codec not in preset["audio_codecs"]:
+        allowed = "、".join(preset["audio_codecs"]) or "无"
+        return f"{container} 不支持音频编码器 {audio_codec}，可选：{allowed}。"
+
+    return None

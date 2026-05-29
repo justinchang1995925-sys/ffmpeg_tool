@@ -8,9 +8,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+
+WINDOWS_USER_PATH_LIMIT = 2040
+DOWNLOAD_RETRIES = 3
+DOWNLOAD_TIMEOUT = 120
 
 DEFAULT_WINDOWS_BUILD_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
@@ -84,27 +90,59 @@ def discover_binaries() -> dict:
     }
 
 
+def cleanup_storage(upload_dir: Path, output_dir: Path, max_age_days: int) -> dict:
+    """Delete files older than max_age_days. If max_age_days <= 0, only return stats."""
+    stats = {"uploads": 0, "outputs": 0, "deleted": 0}
+    cutoff = time.time() - max_age_days * 86400 if max_age_days > 0 else None
+
+    for folder, key in ((upload_dir, "uploads"), (output_dir, "outputs")):
+        if not folder.exists():
+            continue
+        for path in folder.iterdir():
+            if not path.is_file() or path.name == ".gitkeep":
+                continue
+            stats[key] += 1
+            if cutoff is not None and path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+                stats["deleted"] += 1
+    return stats
+
+
 def _download_file(url: str, target: Path, progress_callback=None) -> None:
-    with urllib.request.urlopen(url, timeout=60) as response:
-        total = int(response.headers.get("Content-Length", "0") or 0)
-        downloaded = 0
-        with target.open("wb") as output:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
-                downloaded += len(chunk)
-                if progress_callback:
-                    if total:
-                        percent = 5 + int(downloaded / total * 80)
-                        message = f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB"
-                    else:
-                        percent = 20
-                        message = f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} MB"
-                    progress_callback(percent, message)
-                if total and downloaded > total:
-                    raise RuntimeError("Downloaded more data than expected.")
+    last_error: Exception | None = None
+    for attempt in range(1, DOWNLOAD_RETRIES + 1):
+        try:
+            if progress_callback and attempt > 1:
+                progress_callback(5, f"下载失败，正在重试（{attempt}/{DOWNLOAD_RETRIES}）...")
+            with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
+                total = int(response.headers.get("Content-Length", "0") or 0)
+                downloaded = 0
+                with target.open("wb") as output:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback:
+                            if total:
+                                percent = 5 + int(downloaded / total * 80)
+                                message = (
+                                    f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} / "
+                                    f"{total / 1024 / 1024:.1f} MB"
+                                )
+                            else:
+                                percent = min(84, 5 + int(downloaded / (1024 * 1024 * 3)))
+                                message = f"正在下载 FFmpeg：{downloaded / 1024 / 1024:.1f} MB"
+                            progress_callback(percent, message)
+                        if total and downloaded > total:
+                            raise RuntimeError("Downloaded more data than expected.")
+            return
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if target.exists():
+                target.unlink(missing_ok=True)
+    raise RuntimeError(f"下载失败（已重试 {DOWNLOAD_RETRIES} 次）：{last_error}")
 
 
 def _find_bin_dir(root: Path) -> Path:
@@ -135,6 +173,12 @@ def _append_user_path(bin_dir: Path) -> str:
         check=False,
     ).stdout.strip()
     new_user_path = existing_user_path + os.pathsep + bin_text if existing_user_path else bin_text
+    if len(new_user_path) > WINDOWS_USER_PATH_LIMIT:
+        return (
+            "用户 PATH 过长，已跳过 setx 写入。程序将通过配置文件直接使用 FFmpeg，"
+            "无需依赖系统 PATH。"
+        )
+
     result = subprocess.run(["setx", "Path", new_user_path], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "写入用户 PATH 失败。")
