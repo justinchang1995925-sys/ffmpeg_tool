@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FFmpeg 音视频图片处理工具</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Python Web + FFmpeg</p>
+      <h1>音视频图片处理工具</h1>
+      <p>支持一键下载 FFmpeg、配置环境变量、按功能处理媒体并实时查看进度。</p>
+    </div>
+    <div class="status-card">
+      <span class="status {{ 'ok' if binaries.installed else 'bad' }}"></span>
+      <strong>{{ 'FFmpeg 已就绪' if binaries.installed else 'FFmpeg 未安装' }}</strong>
+      <small>{{ binaries.ffmpeg or '请先安装或配置 PATH' }}</small>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel sidebar">
+      <h2>功能列表</h2>
+      <input id="feature-search" type="search" placeholder="搜索功能..." class="search-input">
+      <div id="feature-list">
+        {% for category, items in groups.items() %}
+          <section class="feature-group" data-category="{{ category }}">
+            <h3>{{ category }}</h3>
+            {% for feature in items %}
+              <a class="feature-link {{ 'active' if feature.id == selected_feature.id else '' }}"
+                 href="{{ url_for('index', feature=feature.id) }}"
+                 data-title="{{ feature.title }}">
+                {{ feature.title }}
+              </a>
+            {% endfor %}
+          </section>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <section class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="messages">
+            {% for category, message in messages %}
+              <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% if not binaries.installed %}
+        <div class="alert-banner">
+          <strong>尚未检测到 FFmpeg</strong>
+          <p>请先完成下方安装，或确保系统 PATH 中可用 ffmpeg 命令。</p>
+          <a href="#install-ffmpeg" class="alert-link">前往安装</a>
+        </div>
+      {% endif %}
+
+      <section class="panel" id="install-ffmpeg">
+        <h2>一键下载与安装 FFmpeg</h2>
+        <p class="muted">
+          Windows 可执行文件来自 gyan.dev release essentials ZIP。安装后会保存路径并尝试写入用户 PATH。
+        </p>
+        <form id="install-form" action="{{ url_for('install') }}" method="post" class="grid-form">
+          <label>
+            安装路径
+            <input name="install_dir" value="D:\tools\ffmpeg" placeholder="D:\tools\ffmpeg">
+          </label>
+          <label>
+            下载地址
+            <input name="download_url" value="{{ default_download_url }}">
+          </label>
+          <button id="install-button" type="submit">下载并安装</button>
+        </form>
+        <div id="install-progress" class="install-progress" hidden>
+          <div class="progress-heading">
+            <strong id="install-progress-title">准备安装...</strong>
+            <span id="install-progress-percent">0%</span>
+          </div>
+          <div class="progress-bar" aria-label="FFmpeg 安装进度">
+            <div id="install-progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <p id="install-progress-message" class="muted">等待下载开始...</p>
+        </div>
+      </section>
+
+      <section class="panel toolbar-panel">
+        <div class="toolbar">
+          <span class="muted">缓存：上传 {{ storage_stats.uploads }} 个 · 输出 {{ storage_stats.outputs }} 个</span>
+          <div class="toolbar-actions">
+            <button type="button" id="cleanup-button" class="secondary-button">清理 7 天前缓存</button>
+            <button type="button" id="open-folder-button" class="secondary-button">打开输出目录</button>
+          </div>
+        </div>
+        <p id="cleanup-message" class="muted" hidden></p>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">{{ selected_feature.category }}</p>
+            <h2>{{ selected_feature.title }}</h2>
+          </div>
+          <span class="pill">{{ selected_feature.tool }}</span>
+        </div>
+
+        <p>{{ selected_feature.description }}</p>
+
+        <div class="docs">
+          <h3>命令示例</h3>
+          <code>{{ selected_feature.example }}</code>
+          <h3>参数说明</h3>
+          <ul>
+            {% for item in selected_feature.docs %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <form id="run-form" action="{{ url_for('run_feature') }}" method="post" enctype="multipart/form-data" class="run-form">
+          <input type="hidden" name="feature_id" value="{{ selected_feature.id }}">
+          <label>
+            输入文件（可多选批量处理）
+            <input type="file" name="input_file" id="input-file" multiple required>
+            <small id="file-count-hint" class="muted" hidden></small>
+          </label>
+
+          <div class="params-grid">
+            {% for param in selected_feature.params %}
+              <label data-param="{{ param.name }}">
+                {{ param.label }}
+                {% if param.choices %}
+                  <select name="{{ param.name }}" id="param-{{ param.name }}">
+                    {% for choice in param.choices %}
+                      <option value="{{ choice }}" {{ 'selected' if choice == param.default else '' }}>{{ choice }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input name="{{ param.name }}" id="param-{{ param.name }}" value="{{ param.default }}" placeholder="{{ param.placeholder or '' }}">
+                {% endif %}
+                {% if param.help %}
+                  <small>{{ param.help }}</small>
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+
+          <label>
+            高级自定义参数（可选）
+            <input name="custom_args" id="custom-args" placeholder="-vf scale=640:-1 -c:v libx264">
+          </label>
+
+          <div class="button-row">
+            <button type="button" id="preview-button" class="secondary-button" {{ '' if binaries.installed else 'disabled' }}>预览命令</button>
+            <button type="submit" id="run-button" {{ '' if binaries.installed else 'disabled' }}>执行处理</button>
+          </div>
+        </form>
+
+        <div id="command-preview" class="command-preview" hidden>
+          <h3>命令预览</h3>
+          <pre id="command-preview-text"></pre>
+        </div>
+
+        <div id="run-progress" class="install-progress" hidden>
+          <div class="progress-heading">
+            <strong id="run-progress-title">正在处理...</strong>
+            <span id="run-progress-percent">0%</span>
+          </div>
+          <div class="progress-bar" aria-label="媒体处理进度">
+            <div id="run-progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <p id="run-progress-message" class="muted">任务启动中...</p>
+        </div>
+      </section>
+
+      <section id="result-panel" class="panel result" hidden>
+        <h2 id="result-title">处理结果</h2>
+        <div id="batch-results" hidden>
+          <h3>批量处理明细</h3>
+          <table class="batch-table">
+            <thead>
+              <tr><th>文件</th><th>状态</th><th>输出/错误</th></tr>
+            </thead>
+            <tbody id="batch-results-body"></tbody>
+          </table>
+        </div>
+        <div id="single-result">
+        <h3>执行命令</h3>
+        <pre id="result-command"></pre>
+        <div id="result-actions" class="button-row" hidden>
+          <a id="result-download" class="download" href="#">下载结果文件</a>
+          <button type="button" id="result-open-folder" class="secondary-button">打开输出目录</button>
+        </div>
+        <h3>标准输出</h3>
+        <pre id="result-stdout" class="log-block"></pre>
+        <h3>错误输出 <button type="button" id="toggle-stderr" class="link-button">展开全部</button></h3>
+        <pre id="result-stderr" class="log-block collapsed"></pre>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script id="format-presets-data" type="application/json">{{ format_presets | tojson }}</script>
+  <script>
+    const formatPresets = JSON.parse(document.getElementById("format-presets-data").textContent);
+    const installForm = document.getElementById("install-form");
+    const installButton = document.getElementById("install-button");
+    const progressBox = document.getElementById("install-progress");
+    const progressTitle = document.getElementById("install-progress-title");
+    const progressPercent = document.getElementById("install-progress-percent");
+    const progressFill = document.getElementById("install-progress-fill");
+    const progressMessage = document.getElementById("install-progress-message");
+    let installTimer = null;
+
+    const runForm = document.getElementById("run-form");
+    const runButton = document.getElementById("run-button");
+    const previewButton = document.getElementById("preview-button");
+    const runProgressBox = document.getElementById("run-progress");
+    const runProgressFill = document.getElementById("run-progress-fill");
+    const runProgressPercent = document.getElementById("run-progress-percent");
+    const runProgressMessage = document.getElementById("run-progress-message");
+    const runProgressTitle = document.getElementById("run-progress-title");
+    const resultPanel = document.getElementById("result-panel");
+    const resultTitle = document.getElementById("result-title");
+    const resultCommand = document.getElementById("result-command");
+    const resultStdout = document.getElementById("result-stdout");
+    const resultStderr = document.getElementById("result-stderr");
+    const resultDownload = document.getElementById("result-download");
+    const resultActions = document.getElementById("result-actions");
+    const commandPreview = document.getElementById("command-preview");
+    const commandPreviewText = document.getElementById("command-preview-text");
+    const batchResults = document.getElementById("batch-results");
+    const batchResultsBody = document.getElementById("batch-results-body");
+    const singleResult = document.getElementById("single-result");
+    let runTimer = null;
+    let stderrExpanded = false;
+
+    const downloadUrlTemplate = "{{ url_for('download', filename='PLACEHOLDER') }}";
+    function downloadUrl(name) {
+      return downloadUrlTemplate.replace("PLACEHOLDER", encodeURIComponent(name));
+    }
+
+    function renderInstallProgress(data) {
+      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
+      progressBox.hidden = false;
+      progressFill.style.width = `${percent}%`;
+      progressPercent.textContent = `${percent}%`;
+      progressMessage.textContent = data.message || "";
+
+      if (data.status === "success") {
+        progressTitle.textContent = "安装完成";
+        progressBox.className = "install-progress success";
+        installButton.disabled = false;
+        clearInterval(installTimer);
+        installTimer = null;
+        setTimeout(() => window.location.reload(), 1500);
+      } else if (data.status === "error") {
+        progressTitle.textContent = "安装失败";
+        progressBox.className = "install-progress error";
+        installButton.disabled = false;
+        clearInterval(installTimer);
+        installTimer = null;
+      } else {
+        progressTitle.textContent = "正在安装 FFmpeg";
+        progressBox.className = "install-progress";
+        installButton.disabled = true;
+      }
+    }
+
+    async function pollInstallProgress() {
+      const response = await fetch("{{ url_for('install_status') }}", { cache: "no-store" });
+      renderInstallProgress(await response.json());
+    }
+
+    installForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      installButton.disabled = true;
+      renderInstallProgress({ percent: 0, message: "正在启动安装任务...", status: "running" });
+      const response = await fetch(installForm.action, { method: "POST", body: new FormData(installForm) });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ message: "安装任务启动失败。" }));
+        renderInstallProgress({ percent: 0, message: data.message, status: "error" });
+        return;
+      }
+      installTimer = setInterval(pollInstallProgress, 1000);
+      pollInstallProgress();
+    });
+
+    function renderRunProgress(data) {
+      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
+      runProgressBox.hidden = false;
+      runProgressFill.style.width = `${percent}%`;
+      runProgressPercent.textContent = `${percent}%`;
+      runProgressMessage.textContent = data.message || "";
+
+      if (data.status === "success") {
+        runProgressTitle.textContent = "处理完成";
+        runProgressBox.className = "install-progress success";
+        runButton.disabled = false;
+        previewButton.disabled = false;
+        clearInterval(runTimer);
+        runTimer = null;
+        showResult(data, true);
+      } else if (data.status === "error") {
+        runProgressTitle.textContent = "处理失败";
+        runProgressBox.className = "install-progress error";
+        runButton.disabled = false;
+        previewButton.disabled = false;
+        clearInterval(runTimer);
+        runTimer = null;
+        showResult(data, false);
+      } else {
+        runProgressTitle.textContent = "正在处理";
+        runProgressBox.className = "install-progress";
+        runButton.disabled = true;
+        previewButton.disabled = true;
+      }
+    }
+
+    function renderBatchTable(results) {
+      batchResultsBody.innerHTML = "";
+      results.forEach((item) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = item.input_name || "";
+        const statusCell = document.createElement("td");
+        statusCell.textContent = item.success ? "✅ 成功" : "❌ 失败";
+        statusCell.className = item.success ? "batch-ok" : "batch-fail";
+        const detailCell = document.createElement("td");
+        if (item.success && item.output_file) {
+          const link = document.createElement("a");
+          link.href = downloadUrl(item.output_file);
+          link.className = "download";
+          link.textContent = item.output_file;
+          detailCell.appendChild(link);
+        } else {
+          detailCell.className = "batch-fail";
+          const summary = document.createElement("div");
+          summary.textContent = item.error || "处理失败";
+          detailCell.appendChild(summary);
+          const fullLog = item.stderr || item.stderr_tail || "";
+          if (fullLog) {
+            const details = document.createElement("details");
+            const label = document.createElement("summary");
+            label.textContent = "查看错误日志";
+            label.className = "link-button";
+            const pre = document.createElement("pre");
+            pre.className = "log-block";
+            pre.textContent = fullLog;
+            details.appendChild(label);
+            details.appendChild(pre);
+            detailCell.appendChild(details);
+          }
+          if (item.command) {
+            const cmd = document.createElement("details");
+            const cmdLabel = document.createElement("summary");
+            cmdLabel.textContent = "查看执行命令";
+            cmdLabel.className = "link-button";
+            const cmdPre = document.createElement("pre");
+            cmdPre.className = "log-block";
+            cmdPre.textContent = item.command;
+            cmd.appendChild(cmdLabel);
+            cmd.appendChild(cmdPre);
+            detailCell.appendChild(cmd);
+          }
+        }
+        row.appendChild(nameCell);
+        row.appendChild(statusCell);
+        row.appendChild(detailCell);
+        batchResultsBody.appendChild(row);
+      });
+    }
+
+    function showResult(data, success) {
+      resultPanel.hidden = false;
+      resultPanel.className = `panel result ${success ? "success" : "failed"}`;
+      const results = data.batch_results || [];
+      const isBatch = (data.batch_total || 0) > 1;
+
+      if (isBatch) {
+        const okCount = results.filter((r) => r.success).length;
+        resultTitle.textContent = `处理结束：成功 ${okCount} / ${data.batch_total}`;
+        batchResults.hidden = false;
+        renderBatchTable(results);
+        // 整批在启动阶段就失败时 results 为空，用单结果区兜底显示错误信息。
+        if (!results.length) {
+          singleResult.hidden = false;
+          resultCommand.textContent = data.command || "";
+          resultStdout.textContent = data.stdout || "无";
+          resultStderr.textContent = data.stderr || data.stderr_tail || data.message || "无";
+          resultStderr.classList.remove("collapsed");
+          resultActions.hidden = true;
+        } else {
+          singleResult.hidden = true;
+        }
+        resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
+      batchResults.hidden = true;
+      singleResult.hidden = false;
+      resultTitle.textContent = success ? "处理完成" : "处理失败";
+      resultCommand.textContent = data.command || "";
+      resultStdout.textContent = data.stdout || "无";
+      resultStderr.textContent = data.stderr_tail || data.message || "无";
+      resultStderr.classList.add("collapsed");
+      stderrExpanded = false;
+      document.getElementById("toggle-stderr").textContent = "展开全部";
+
+      if (success && data.output_file) {
+        resultActions.hidden = false;
+        resultDownload.href = downloadUrl(data.output_file);
+        resultDownload.textContent = `下载 ${data.output_file}`;
+      } else {
+        resultActions.hidden = true;
+      }
+      resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function pollRunProgress() {
+      const response = await fetch("{{ url_for('run_status') }}", { cache: "no-store" });
+      renderRunProgress(await response.json());
+    }
+
+    const inputFile = document.getElementById("input-file");
+    const fileCountHint = document.getElementById("file-count-hint");
+    inputFile.addEventListener("change", () => {
+      const count = inputFile.files.length;
+      if (count > 1) {
+        fileCountHint.hidden = false;
+        fileCountHint.textContent = `已选择 ${count} 个文件，将批量处理。`;
+      } else {
+        fileCountHint.hidden = true;
+      }
+    });
+
+    previewButton.addEventListener("click", async () => {
+      if (!inputFile.files.length) {
+        alert("请先选择输入文件。");
+        return;
+      }
+      // 预览只需参数，构造不含文件的表单，避免上传大文件。
+      const previewForm = new FormData();
+      for (const [key, value] of new FormData(runForm).entries()) {
+        if (key !== "input_file") previewForm.append(key, value);
+      }
+      const response = await fetch("{{ url_for('run_preview') }}", { method: "POST", body: previewForm });
+      const data = await response.json();
+      commandPreview.hidden = false;
+      if (data.ok) {
+        const note = inputFile.files.length > 1 ? "（批量：每个文件都会套用此命令模板）\n" : "";
+        commandPreviewText.textContent = note + data.command;
+      } else {
+        commandPreviewText.textContent = data.message || "预览失败";
+      }
+    });
+
+    runForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      resultPanel.hidden = true;
+      commandPreview.hidden = true;
+      runButton.disabled = true;
+      previewButton.disabled = true;
+      renderRunProgress({ percent: 0, message: "正在启动处理任务...", status: "running" });
+
+      const response = await fetch(runForm.action, { method: "POST", body: new FormData(runForm) });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        renderRunProgress({ percent: 0, message: data.message || "任务启动失败", status: "error" });
+        return;
+      }
+      runTimer = setInterval(pollRunProgress, 1000);
+      pollRunProgress();
+    });
+
+    document.getElementById("toggle-stderr").addEventListener("click", async () => {
+      if (stderrExpanded) {
+        const status = await (await fetch("{{ url_for('run_status') }}")).json();
+        resultStderr.textContent = status.stderr_tail || status.message || "无";
+        resultStderr.classList.add("collapsed");
+        document.getElementById("toggle-stderr").textContent = "展开全部";
+      } else {
+        const status = await (await fetch("{{ url_for('run_status') }}")).json();
+        resultStderr.textContent = status.stderr || status.stderr_tail || "无";
+        resultStderr.classList.remove("collapsed");
+        document.getElementById("toggle-stderr").textContent = "收起";
+      }
+      stderrExpanded = !stderrExpanded;
+    });
+
+    async function openOutputFolder() {
+      try {
+        const response = await fetch("{{ url_for('open_output_folder') }}");
+        const data = await response.json();
+        if (!data.ok) {
+          window.prompt("无法自动打开输出目录，请手动复制以下路径：", data.path || "");
+        }
+      } catch (error) {
+        window.alert("请求失败，无法打开输出目录：" + error);
+      }
+    }
+
+    document.getElementById("open-folder-button").addEventListener("click", openOutputFolder);
+    document.getElementById("result-open-folder").addEventListener("click", openOutputFolder);
+
+    document.getElementById("cleanup-button").addEventListener("click", async () => {
+      const response = await fetch("{{ url_for('cleanup') }}", { method: "POST" });
+      const data = await response.json();
+      const message = document.getElementById("cleanup-message");
+      message.hidden = false;
+      message.textContent = `已清理 ${data.deleted.deleted} 个过期文件。当前上传 ${data.stats.uploads} 个，输出 ${data.stats.outputs} 个。`;
+    });
+
+    document.getElementById("feature-search").addEventListener("input", (event) => {
+      const keyword = event.target.value.trim().toLowerCase();
+      document.querySelectorAll(".feature-link").forEach((link) => {
+        const match = link.dataset.title.toLowerCase().includes(keyword);
+        link.style.display = match ? "block" : "none";
+      });
+      document.querySelectorAll(".feature-group").forEach((group) => {
+        const visible = [...group.querySelectorAll(".feature-link")].some((link) => link.style.display !== "none");
+        group.style.display = visible ? "block" : "none";
+      });
+    });
+
+    function applyFormatPreset() {
+      const containerSelect = document.getElementById("param-container_format");
+      if (!containerSelect) return;
+      const preset = formatPresets[containerSelect.value];
+      if (!preset) return;
+
+      const streamSelect = document.getElementById("param-stream_mode");
+      if (streamSelect && preset.stream_mode) {
+        streamSelect.value = preset.stream_mode;
+        streamSelect.disabled = preset.stream_mode === "audio_only";
+      }
+
+      const videoSelect = document.getElementById("param-video_codec");
+      if (videoSelect && preset.default_video) {
+        videoSelect.value = preset.default_video;
+      }
+
+      const audioSelect = document.getElementById("param-audio_codec");
+      if (audioSelect && preset.default_audio) {
+        audioSelect.value = preset.default_audio;
+      }
+
+      const forceInput = document.getElementById("param-force_format");
+      if (forceInput && preset.force_format !== undefined) {
+        forceInput.value = preset.force_format;
+      }
+    }
+
+    const containerSelect = document.getElementById("param-container_format");
+    if (containerSelect) {
+      containerSelect.addEventListener("change", applyFormatPreset);
+      applyFormatPreset();
+    }
+  </script>
+</body>
+</html>
